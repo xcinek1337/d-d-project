@@ -1,22 +1,36 @@
 // import { Validatable, validate } from './validate';
+
+enum ProjectStatus {
+	Active,
+	Finished,
+}
+
+class Project {
+	constructor(
+		public id: string,
+		public title: string,
+		public description: string,
+		public people: number,
+		public status: ProjectStatus
+	) {}
+}
+
+type Listener = (items: Project[]) => void;
 // PROJECT STATE MANAGEMENT
 class ProjectState {
-	private listeners: any[] = [];
-	private projects: any[] = [];
+	private listeners: Listener[] = [];
+	private projects: Project[] = [];
 
 	private static instane: ProjectState;
 
-	addListener(listenerFn: Function) {
+	addListener(listenerFn: Listener) {
 		this.listeners.push(listenerFn);
 	}
 
 	addProject(title: string, description: string, numOfPeople: number) {
-		const newProject = {
-			id: Math.random().toString(),
-			title: title,
-			description: description,
-			people: numOfPeople,
-		};
+		console.log('listerner', this.listeners);
+		console.log('projekty', this.projects);
+		const newProject = new Project(Math.random().toString(), title, description, numOfPeople, ProjectStatus.Active);
 		this.projects.push(newProject);
 		for (const listenerFn of this.listeners) {
 			listenerFn(this.projects.slice());
@@ -78,13 +92,10 @@ function Autobind(_: any, _2: string, descriptor: PropertyDescriptor) {
 }
 // ProjecttList Class
 class ProjectList {
-	// kulka elementu v
 	templateElement: HTMLTemplateElement;
-	// tutaj chcemy go wstawic v
 	hostElement: HTMLDivElement;
-	// to jest nasz gotowy element skopiowany z kukly v
 	element: HTMLElement;
-	assignedProjects: any[];
+	assignedProjects: Project[];
 
 	constructor(private type: 'active' | 'finished') {
 		this.templateElement = document.getElementById('project-list')! as HTMLTemplateElement;
@@ -96,8 +107,16 @@ class ProjectList {
 		this.element = importedNode.firstElementChild as HTMLElement;
 		this.element.id = `${this.type}-projects`;
 
-		projectState.addListener((projects: any[]) => {
-			this.assignedProjects = projects;
+		projectState.addListener((projects: Project[]) => {
+			//mastermind ****** wymyslil to ze procjets to jest funkcja nasluchujaca, ale w runtime to jest juz WYNIK TEJ FUNKCJI - czyli skopiowana tablica projects ze state... wow
+            // przy kazdym submicie- czyli addProject iteruje sie po tablicy nasluchiwaczy i przekazuje sie kazdemu kopie tablicy, sprytne - nigdy bym na to nie wpadl, nawet nie widzialem ze tak mozna w argumencie niby uzyc funkcji a to juz jest gotowy wynik bez uzycia (nawiasow () ) ktore kaza wykonac kod...
+			const relevantProjects = projects.filter((prj) => {
+				if (this.type === 'active') {
+					return prj.status === ProjectStatus.Active;
+				}
+				return prj.status === ProjectStatus.Finished;
+			});
+			this.assignedProjects = relevantProjects;
 			this.renderProjects();
 		});
 
@@ -107,6 +126,7 @@ class ProjectList {
 
 	private renderProjects() {
 		const listEl = document.getElementById(`${this.type}-projects-list`)! as HTMLUListElement;
+		listEl.innerHTML = '';
 		for (const prjItem of this.assignedProjects) {
 			const listItem = document.createElement('li');
 			listItem.textContent = prjItem.title;
@@ -193,7 +213,6 @@ class ProjectInput {
 		if (Array.isArray(userInput)) {
 			const [title, desc, people] = userInput;
 			projectState.addProject(title, desc, people);
-
 			this.clearInputs();
 		}
 	}
