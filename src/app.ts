@@ -15,16 +15,24 @@ class Project {
 	) {}
 }
 
-type Listener = (items: Project[]) => void;
+type Listener<T> = (items: T[]) => void;
+
+class State<T> {
+	protected listeners: Listener<T>[] = [];
+
+	addListener(listenerFn: Listener<T>) {
+		this.listeners.push(listenerFn);
+	}
+}
+
 // PROJECT STATE MANAGEMENT
-class ProjectState {
-	private listeners: Listener[] = [];
+class ProjectState extends State<Project> {
 	private projects: Project[] = [];
 
 	private static instane: ProjectState;
 
-	addListener(listenerFn: Listener) {
-		this.listeners.push(listenerFn);
+	private constructor() {
+		super()
 	}
 
 	addProject(title: string, description: string, numOfPeople: number) {
@@ -90,26 +98,48 @@ function Autobind(_: any, _2: string, descriptor: PropertyDescriptor) {
 	};
 	return adjDescriptor;
 }
-// ProjecttList Class
-class ProjectList {
+//component base class
+abstract class Component<T extends HTMLElement, U extends HTMLElement> {
 	templateElement: HTMLTemplateElement;
-	hostElement: HTMLDivElement;
-	element: HTMLElement;
-	assignedProjects: Project[];
+	hostElement: T;
+	element: U;
 
-	constructor(private type: 'active' | 'finished') {
-		this.templateElement = document.getElementById('project-list')! as HTMLTemplateElement;
-		this.hostElement = document.getElementById('app')! as HTMLDivElement;
-		this.assignedProjects = [];
+	constructor(templateId: string, hostElementId: string, insertAtStart: boolean, newElementId?: string | undefined) {
+		this.templateElement = document.getElementById(templateId)! as HTMLTemplateElement;
+		this.hostElement = document.getElementById(hostElementId)! as T;
 
 		const importedNode = document.importNode(this.templateElement.content, true);
 
-		this.element = importedNode.firstElementChild as HTMLElement;
-		this.element.id = `${this.type}-projects`;
+		this.element = importedNode.firstElementChild as U;
+		if (newElementId) {
+			this.element.id = newElementId;
+		}
 
+		this.attach(insertAtStart);
+	}
+	private attach(insertAtBegginning: boolean) {
+		this.hostElement.insertAdjacentElement(insertAtBegginning ? 'afterbegin' : 'beforeend', this.element);
+	}
+	abstract configure(): void;
+	abstract renderContent(): void;
+}
+
+// ProjecttList Class
+class ProjectList extends Component<HTMLDivElement, HTMLElement> {
+	assignedProjects: Project[];
+
+	constructor(private type: 'active' | 'finished') {
+		super('project-list', 'app', false, `${type}-projects`);
+		this.assignedProjects = [];
+
+		this.configure();
+		this.renderContent();
+	}
+
+	configure() {
 		projectState.addListener((projects: Project[]) => {
 			//mastermind ****** wymyslil to ze procjets to jest funkcja nasluchujaca, ale w runtime to jest juz WYNIK TEJ FUNKCJI - czyli skopiowana tablica projects ze state... wow
-            // przy kazdym submicie- czyli addProject iteruje sie po tablicy nasluchiwaczy i przekazuje sie kazdemu kopie tablicy, sprytne - nigdy bym na to nie wpadl, nawet nie widzialem ze tak mozna w argumencie niby uzyc funkcji a to juz jest gotowy wynik bez uzycia (nawiasow () ) ktore kaza wykonac kod...
+			// przy kazdym submicie- czyli addProject iteruje sie po tablicy nasluchiwaczy i przekazuje sie kazdemu kopie tablicy, sprytne - nigdy bym na to nie wpadl, nawet nie widzialem ze tak mozna w argumencie niby uzyc funkcji a to juz jest gotowy wynik bez uzycia (nawiasow () ) ktore kaza wykonac kod...
 			const relevantProjects = projects.filter((prj) => {
 				if (this.type === 'active') {
 					return prj.status === ProjectStatus.Active;
@@ -119,9 +149,12 @@ class ProjectList {
 			this.assignedProjects = relevantProjects;
 			this.renderProjects();
 		});
+	}
 
-		this.attach();
-		this.renderContent();
+	renderContent() {
+		const listId = `${this.type}-projects-list`;
+		this.element.querySelector('ul')!.id = listId;
+		this.element.querySelector('h2')!.textContent = this.type.toUpperCase() + ' PROJECTS';
 	}
 
 	private renderProjects() {
@@ -133,43 +166,21 @@ class ProjectList {
 			listEl.appendChild(listItem);
 		}
 	}
-
-	private renderContent() {
-		const listId = `${this.type}-projects-list`;
-		this.element.querySelector('ul')!.id = listId;
-		this.element.querySelector('h2')!.textContent = this.type.toUpperCase() + ' PROJECTS';
-	}
-
-	private attach() {
-		this.hostElement.insertAdjacentElement('beforeend', this.element);
-		this.element.querySelector('ul');
-	}
 }
 
 // ProjectInput Class
-class ProjectInput {
-	templateElement: HTMLTemplateElement;
-	hostElement: HTMLDivElement;
-	element: HTMLFormElement;
+class ProjectInput extends Component<HTMLDivElement, HTMLFormElement> {
 	titleInputElement: HTMLInputElement;
 	descriptionInputElement: HTMLInputElement;
 	peopleInputElement: HTMLInputElement;
 
 	constructor() {
-		this.templateElement = document.getElementById('project-input')! as HTMLTemplateElement;
-		this.hostElement = document.getElementById('app')! as HTMLDivElement;
-
-		const importedNode = document.importNode(this.templateElement.content, true);
-
-		this.element = importedNode.firstElementChild as HTMLFormElement;
-		this.element.id = 'user-input';
-
+		super('project-input', 'app', true, 'user-input');
 		this.titleInputElement = this.element.querySelector('#title') as HTMLInputElement;
 		this.descriptionInputElement = this.element.querySelector('#description') as HTMLInputElement;
 		this.peopleInputElement = this.element.querySelector('#people') as HTMLInputElement;
 
 		this.configure();
-		this.attach();
 	}
 
 	private gatherUserInput(): [string, string, number] | void {
@@ -199,7 +210,10 @@ class ProjectInput {
 			return [enteredTitle, enteredDescription, +enteredPeople];
 		}
 	}
-
+	configure() {
+		this.element.addEventListener('submit', this.submitHandler);
+	}
+	renderContent() {}
 	private clearInputs() {
 		this.titleInputElement.value = '';
 		this.descriptionInputElement.value = '';
@@ -215,14 +229,6 @@ class ProjectInput {
 			projectState.addProject(title, desc, people);
 			this.clearInputs();
 		}
-	}
-
-	private configure() {
-		this.element.addEventListener('submit', this.submitHandler);
-	}
-
-	private attach() {
-		this.hostElement.insertAdjacentElement('afterbegin', this.element);
 	}
 }
 
